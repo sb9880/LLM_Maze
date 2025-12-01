@@ -13,9 +13,10 @@ class ExperimentConfigRequest(BaseModel):
     num_episodes: int = Field(10, ge=1, le=100)
 
     # Agent config
-    model: str = Field("gpt-4-turbo")
+    model: str = Field("gpt-3.5-turbo")
     agent_strategy: str = Field("adaptive", pattern="^(adaptive|tool_trusting|tool_avoiding|llm_solver)$")
     temperature: float = Field(0.7, ge=0.0, le=2.0)
+    use_openai: bool = Field(False)
 
     # Tool config
     use_tool: bool = Field(True)

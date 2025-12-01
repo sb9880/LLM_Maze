@@ -31,9 +31,10 @@ class ExperimentConfig:
     num_episodes: int = 10
 
     # Agent
-    model: str = "gpt-4-turbo"
+    model: str = "gpt-3.5-turbo"
     agent_strategy: str = "adaptive"
     temperature: float = 0.7
+    use_openai: bool = False
 
     # Tool
     use_tool: bool = True
@@ -132,6 +133,7 @@ class ExperimentRunner:
             seed=self.config.seed + episode_num,
             use_tool=self.config.use_tool,
             tool_query_frequency=self.config.tool_query_frequency,
+            use_openai=self.config.use_openai,
         )
 
         strategy = self._create_strategy(

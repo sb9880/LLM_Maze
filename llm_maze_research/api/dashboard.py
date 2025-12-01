@@ -611,9 +611,20 @@ async def dashboard_home():
                             <option value="adaptive" selected>Adaptive</option>
                             <option value="tool_trusting">Tool Trusting</option>
                             <option value="tool_avoiding">Tool Avoiding</option>
-                            <option value="llm_solver">LLM Solver (Requires Ollama)</option>
+                            <option value="llm_solver">LLM Solver</option>
                         </select>
                     </div>
+                    <div class="input-group">
+                        <label>LLM Model (for LLM Solver)</label>
+                        <select id="llmModel">
+                            <option value="openai" selected>OpenAI (gpt-3.5-turbo - cheapest)</option>
+                            <option value="openai-gpt4">OpenAI (gpt-4 - best)</option>
+                            <option value="ollama">Ollama (mistral - free, local)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="control-group">
                     <div class="input-group">
                         <label>Noise Type</label>
                         <select id="noiseType">
@@ -764,6 +775,21 @@ async def dashboard_home():
             });
 
             async function runExperiment() {
+                const llmModelSelect = document.getElementById('llmModel').value;
+                let model = "gpt-3.5-turbo";
+                let use_openai = true;
+
+                if (llmModelSelect === "openai") {
+                    model = "gpt-3.5-turbo";
+                    use_openai = true;
+                } else if (llmModelSelect === "openai-gpt4") {
+                    model = "gpt-4";
+                    use_openai = true;
+                } else if (llmModelSelect === "ollama") {
+                    model = "mistral";
+                    use_openai = false;
+                }
+
                 const config = {
                     maze_size: parseInt(document.getElementById('mazeSize').value),
                     maze_difficulty: document.getElementById('difficulty').value,
@@ -771,7 +797,8 @@ async def dashboard_home():
                     agent_strategy: document.getElementById('strategy').value,
                     noise_type: document.getElementById('noiseType').value,
                     noise_level: 1 - (parseInt(document.getElementById('toolAccuracy').value) / 100),
-                    model: "gpt-4-turbo",
+                    model: model,
+                    use_openai: use_openai,
                     temperature: 0.7,
                     seed: 42
                 };
