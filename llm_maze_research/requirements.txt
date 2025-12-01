@@ -9,6 +9,7 @@ langchain>=0.1.0
 langchain-openai>=0.0.1
 langchain-anthropic>=0.0.1
 openai>=1.0.0
+ollama>=0.0.1  # Optional: for local LLM models
 
 # API & Async
 fastapi>=0.104.0

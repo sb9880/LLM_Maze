@@ -1,6 +1,7 @@
 """LLM-based maze solver that decides moves and tool usage."""
 
 from typing import Any, Dict, List, Optional, Tuple
+import os
 import numpy as np
 import structlog
 
@@ -10,34 +11,57 @@ logger = structlog.get_logger(__name__)
 class LLMMazeSolver:
     """LLM-based maze solver that makes navigation decisions."""
 
-    def __init__(self, model: str = "mistral"):
+    def __init__(self, model: str = "mistral", use_openai: bool = False):
         """
         Initialize LLM maze solver.
 
         Args:
-            model: Model name for Ollama (e.g., 'mistral', 'neural-chat', 'phi')
+            model: Model name (e.g., 'mistral', 'gpt-3.5-turbo', 'gpt-4')
+            use_openai: If True, use OpenAI API instead of Ollama
         """
         self.model = model
         self.client = None
-        self.use_ollama = True
+        self.use_openai = use_openai
+        self.use_ollama = not use_openai
 
-        try:
-            import ollama
-            self.client = ollama
-            logger.info("Ollama client initialized for maze solver", model=model)
-        except ImportError:
-            logger.warning(
-                "Ollama not installed. Install with: pip install ollama",
-                fallback="Using random decisions",
-            )
-            self.use_ollama = False
-        except Exception as e:
-            logger.warning(
-                "Ollama client initialization failed",
-                error=str(e),
-                fallback="Using random decisions",
-            )
-            self.use_ollama = False
+        if use_openai:
+            try:
+                from openai import OpenAI
+                api_key = os.getenv("OPENAI_API_KEY")
+                if not api_key:
+                    logger.warning(
+                        "OPENAI_API_KEY not set. Set environment variable or use Ollama",
+                        fallback="Using random decisions",
+                    )
+                    self.use_openai = False
+                    self.use_ollama = False
+                else:
+                    self.client = OpenAI(api_key=api_key)
+                    logger.info("OpenAI client initialized for maze solver", model=model)
+            except ImportError:
+                logger.warning(
+                    "OpenAI not installed. Install with: pip install openai",
+                    fallback="Using Ollama or random decisions",
+                )
+                self.use_openai = False
+        else:
+            try:
+                import ollama
+                self.client = ollama
+                logger.info("Ollama client initialized for maze solver", model=model)
+            except ImportError:
+                logger.warning(
+                    "Ollama not installed. Install with: pip install ollama",
+                    fallback="Using random decisions",
+                )
+                self.use_ollama = False
+            except Exception as e:
+                logger.warning(
+                    "Ollama client initialization failed",
+                    error=str(e),
+                    fallback="Using random decisions",
+                )
+                self.use_ollama = False
 
     def decide_action(
         self,
@@ -61,7 +85,7 @@ class LLMMazeSolver:
             Tuple of (action_index, reasoning_dict)
             action_index: 0=up, 1=down, 2=left, 3=right
         """
-        if not self.use_ollama or self.client is None:
+        if (not self.use_ollama and not self.use_openai) or self.client is None:
             # Fallback: greedy move
             return self._greedy_move(agent_pos, goal_pos, maze)
 
@@ -74,16 +98,26 @@ class LLMMazeSolver:
                 agent_pos, goal_pos, maze, valid_moves, recent_moves, tool_history
             )
 
-            # Get LLM decision
-            response = self.client.generate(
-                model=self.model,
-                prompt=prompt,
-                stream=False,
-                options={"temperature": 0.3, "top_k": 2, "top_p": 0.5},
-            )
+            if self.use_openai:
+                # Use OpenAI API
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.3,
+                    max_tokens=100,
+                )
+                decision_text = response.choices[0].message.content.strip().lower()
+            else:
+                # Use Ollama
+                response = self.client.generate(
+                    model=self.model,
+                    prompt=prompt,
+                    stream=False,
+                    options={"temperature": 0.3, "top_k": 2, "top_p": 0.5},
+                )
+                decision_text = response["response"].strip().lower()
 
             # Parse response to get action
-            decision_text = response["response"].strip().lower()
             action = self._parse_action_decision(decision_text, valid_moves)
 
             return action, {
@@ -121,7 +155,7 @@ class LLMMazeSolver:
         Returns:
             Tuple of (should_use_tool, reasoning_dict)
         """
-        if not self.use_ollama or self.client is None:
+        if (not self.use_ollama and not self.use_openai) or self.client is None:
             # Fallback: use tool if it's reliable
             return recent_success_rate > 0.5, {
                 "method": "fallback",
@@ -139,16 +173,26 @@ class LLMMazeSolver:
                 agent_pos, goal_pos, maze_size, distance, recent_success_rate
             )
 
-            # Get LLM decision
-            response = self.client.generate(
-                model=self.model,
-                prompt=prompt,
-                stream=False,
-                options={"temperature": 0.3, "top_k": 2, "top_p": 0.5},
-            )
+            if self.use_openai:
+                # Use OpenAI API
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.3,
+                    max_tokens=50,
+                )
+                decision_text = response.choices[0].message.content.strip().lower()
+            else:
+                # Use Ollama
+                response = self.client.generate(
+                    model=self.model,
+                    prompt=prompt,
+                    stream=False,
+                    options={"temperature": 0.3, "top_k": 2, "top_p": 0.5},
+                )
+                decision_text = response["response"].strip().lower()
 
             # Parse response
-            decision_text = response["response"].strip().lower()
             should_use = "yes" in decision_text
 
             return should_use, {

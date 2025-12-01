@@ -27,6 +27,7 @@ class AgentConfig:
     tool_query_frequency: float = 0.5  # How often to query tool
     use_llm_tool_decider: bool = False  # Use LLM to decide tool usage
     llm_model: str = "mistral"  # Ollama model for tool decision
+    use_openai: bool = False  # Use OpenAI API instead of Ollama
 
 
 class BaseAgent:
@@ -305,7 +306,8 @@ class LLMSolverAgent(BaseAgent):
         super().__init__(config, planner, strategy)
 
         # Initialize LLM maze solver
-        self.maze_solver = LLMMazeSolver(model=config.llm_model)
+        model = config.model if config.use_openai else config.llm_model
+        self.maze_solver = LLMMazeSolver(model=model, use_openai=config.use_openai)
 
     def step(
         self,
