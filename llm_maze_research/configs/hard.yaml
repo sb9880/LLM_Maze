@@ -1,0 +1,27 @@
+# Hard maze configuration with high noise
+
+env:
+  maze_size: 20
+  difficulty: hard
+  seed: 42
+  max_steps: 600
+
+agent:
+  model: gpt-4-turbo
+  strategy: adaptive
+  temperature: 0.7
+  tool_query_frequency: 0.5
+
+planner:
+  type: astar
+  noise_type: random
+  noise_level: 0.6
+
+experiment:
+  num_episodes: 50
+  seed: 42
+
+metrics:
+  track_path_optimality: true
+  track_tool_usage: true
+  track_failure_analysis: true

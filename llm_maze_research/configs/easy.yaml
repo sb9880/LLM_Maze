@@ -1,0 +1,27 @@
+# Easy maze configuration
+
+env:
+  maze_size: 12
+  difficulty: easy
+  seed: 42
+  max_steps: 300
+
+agent:
+  model: gpt-4-turbo
+  strategy: adaptive
+  temperature: 0.7
+  tool_query_frequency: 0.5
+
+planner:
+  type: astar
+  noise_type: none
+  noise_level: 0.0
+
+experiment:
+  num_episodes: 20
+  seed: 42
+
+metrics:
+  track_path_optimality: true
+  track_tool_usage: true
+  track_failure_analysis: true

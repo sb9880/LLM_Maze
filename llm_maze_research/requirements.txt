@@ -1,0 +1,41 @@
+# Core dependencies
+gymnasium>=0.29.0
+numpy>=1.24.0
+pydantic>=2.0.0
+pyyaml>=6.0
+
+# LLM & Agents
+langchain>=0.1.0
+langchain-openai>=0.0.1
+langchain-anthropic>=0.0.1
+openai>=1.0.0
+
+# API & Async
+fastapi>=0.104.0
+uvicorn>=0.24.0
+httpx>=0.25.0
+
+# Data & Metrics
+pandas>=2.0.0
+matplotlib>=3.7.0
+seaborn>=0.13.0
+
+# Jupyter & Notebooks
+jupyter>=1.0.0
+ipykernel>=6.26.0
+ipywidgets>=8.1.0
+
+# Testing & Development
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+black>=23.11.0
+ruff>=0.1.0
+mypy>=1.7.0
+
+# Logging & Monitoring
+python-dotenv>=1.0.0
+structlog>=23.2.0
+
+# Utilities
+tqdm>=4.66.0
+python-multipart>=0.0.6

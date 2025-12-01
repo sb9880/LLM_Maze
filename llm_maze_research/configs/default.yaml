@@ -1,0 +1,39 @@
+# Default configuration for maze navigation experiments
+
+# Environment configuration
+env:
+  maze_size: 16
+  difficulty: medium  # easy, medium, hard
+  seed: 42
+  max_steps: 500
+
+# Agent configuration
+agent:
+  model: gpt-4-turbo
+  strategy: adaptive  # adaptive, tool_trusting, tool_avoiding
+  temperature: 0.7
+  tool_query_frequency: 0.5
+
+# Planner/Tool configuration
+planner:
+  type: astar
+  noise_type: random  # random, biased, delayed, none
+  noise_level: 0.3
+
+# Experiment configuration
+experiment:
+  num_episodes: 10
+  seed: 42
+
+# Metrics collection
+metrics:
+  track_path_optimality: true
+  track_tool_usage: true
+  track_failure_analysis: true
+  convergence_window: 10
+
+# Logging
+logging:
+  level: INFO
+  save_logs: true
+  log_dir: logs/

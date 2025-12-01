@@ -1,0 +1,79 @@
+# Noise injection profiles for tool reliability studies
+
+noise_profiles:
+  perfect_tool:
+    type: none
+    level: 0.0
+    description: Perfect tool - no noise
+
+  low_noise:
+    type: random
+    level: 0.1
+    description: Low noise - 10% chance of incorrect suggestions
+
+  medium_noise:
+    type: random
+    level: 0.3
+    description: Medium noise - 30% chance of incorrect suggestions
+
+  high_noise:
+    type: random
+    level: 0.6
+    description: High noise - 60% chance of incorrect suggestions
+
+  extreme_noise:
+    type: random
+    level: 0.9
+    description: Extreme noise - 90% chance of incorrect suggestions
+
+  biased_tool:
+    type: biased
+    level: 0.3
+    description: Tool biased away from goal 30% of time
+
+  delayed_tool:
+    type: delayed
+    level: 0.3
+    description: Tool returns outdated paths 30% of time
+
+# Experiment groups for comparative analysis
+experiment_groups:
+  noise_ablation:
+    - config_base: default.yaml
+      planner:
+        noise_type: none
+        noise_level: 0.0
+    - config_base: default.yaml
+      planner:
+        noise_type: random
+        noise_level: 0.2
+    - config_base: default.yaml
+      planner:
+        noise_type: random
+        noise_level: 0.5
+    - config_base: default.yaml
+      planner:
+        noise_type: random
+        noise_level: 0.8
+
+  strategy_comparison:
+    - config_base: default.yaml
+      agent:
+        strategy: tool_trusting
+    - config_base: default.yaml
+      agent:
+        strategy: tool_avoiding
+    - config_base: default.yaml
+      agent:
+        strategy: adaptive
+
+  model_comparison:
+    - config_base: default.yaml
+      agent:
+        model: gpt-4-turbo
+    - config_base: default.yaml
+      agent:
+        model: gpt-3.5-turbo
+    - config_base: default.yaml
+      agent:
+        model: claude-3-opus
