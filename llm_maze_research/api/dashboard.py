@@ -617,9 +617,11 @@ async def dashboard_home():
                     <div class="input-group">
                         <label>LLM Model (for LLM Solver)</label>
                         <select id="llmModel">
-                            <option value="openai" selected>OpenAI (gpt-3.5-turbo - cheapest)</option>
-                            <option value="openai-gpt4">OpenAI (gpt-4 - best)</option>
-                            <option value="ollama">Ollama (mistral - free, local)</option>
+                            <option value="openai" selected>OpenAI (gpt-3.5-turbo)</option>
+                            <option value="openai-gpt4">OpenAI (gpt-4)</option>
+                            <option value="openai-o1mini">OpenAI (o1-mini)</option>
+                            <option value="openrouter">OpenRouter (free models)</option>
+                            <option value="ollama">Ollama (local - free)</option>
                         </select>
                     </div>
                 </div>
@@ -781,13 +783,14 @@ async def dashboard_home():
 
                 if (llmModelSelect === "openai") {
                     model = "gpt-3.5-turbo";
-                    use_openai = true;
                 } else if (llmModelSelect === "openai-gpt4") {
                     model = "gpt-4";
-                    use_openai = true;
+                } else if (llmModelSelect === "openai-o1mini") {
+                    model = "o1-mini";
+                } else if (llmModelSelect === "openrouter") {
+                    model = "openrouter";
                 } else if (llmModelSelect === "ollama") {
-                    model = "mistral";
-                    use_openai = false;
+                    model = "ollama";
                 }
 
                 const config = {
