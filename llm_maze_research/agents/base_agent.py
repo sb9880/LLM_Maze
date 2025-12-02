@@ -90,12 +90,26 @@ class BaseAgent:
         goal_pos = obs["goal_pos"]
         maze = obs["maze"]
 
+        # Calculate current distance to goal (before taking action)
+        current_distance = abs(agent_pos[0] - goal_pos[0]) + abs(agent_pos[1] - goal_pos[1])
+
         # Record trajectory
         self.episode_trajectory.append({
             "step": len(self.episode_trajectory),
             "agent_pos": tuple(agent_pos),
             "goal_pos": tuple(goal_pos),
         })
+
+        # Update helpfulness of previous tool query if exists
+        if len(self.tool_queries) > 0 and len(self.episode_trajectory) >= 2:
+            last_query = self.tool_queries[-1]
+            # Only update if not already set
+            if "tool_was_helpful" not in last_query:
+                # Get previous position and distance
+                prev_pos = self.episode_trajectory[-2]["agent_pos"]
+                prev_distance = abs(prev_pos[0] - goal_pos[0]) + abs(prev_pos[1] - goal_pos[1])
+                # Tool was helpful if we moved closer to goal
+                last_query["tool_was_helpful"] = bool(current_distance < prev_distance)
 
         # Decide whether to query tool
         should_query_tool = False
@@ -241,12 +255,26 @@ class MazeAgent(BaseAgent):
         goal_pos = obs["goal_pos"]
         maze = obs["maze"]
 
+        # Calculate current distance to goal (before taking action)
+        current_distance = abs(agent_pos[0] - goal_pos[0]) + abs(agent_pos[1] - goal_pos[1])
+
         # Record trajectory
         self.episode_trajectory.append({
             "step": len(self.episode_trajectory),
             "agent_pos": tuple(agent_pos),
             "goal_pos": tuple(goal_pos),
         })
+
+        # Update helpfulness of previous tool query if exists
+        if len(self.tool_queries) > 0 and len(self.episode_trajectory) >= 2:
+            last_query = self.tool_queries[-1]
+            # Only update if not already set
+            if "tool_was_helpful" not in last_query:
+                # Get previous position and distance
+                prev_pos = self.episode_trajectory[-2]["agent_pos"]
+                prev_distance = abs(prev_pos[0] - goal_pos[0]) + abs(prev_pos[1] - goal_pos[1])
+                # Tool was helpful if we moved closer to goal
+                last_query["tool_was_helpful"] = bool(current_distance < prev_distance)
 
         # Calculate distance
         distance = int(
@@ -328,12 +356,26 @@ class LLMSolverAgent(BaseAgent):
         goal_pos = obs["goal_pos"]
         maze = obs["maze"]
 
+        # Calculate current distance to goal (before taking action)
+        current_distance = abs(agent_pos[0] - goal_pos[0]) + abs(agent_pos[1] - goal_pos[1])
+
         # Record trajectory
         self.episode_trajectory.append({
             "step": len(self.episode_trajectory),
             "agent_pos": tuple(agent_pos),
             "goal_pos": tuple(goal_pos),
         })
+
+        # Update helpfulness of previous tool query if exists
+        if len(self.tool_queries) > 0 and len(self.episode_trajectory) >= 2:
+            last_query = self.tool_queries[-1]
+            # Only update if not already set
+            if "tool_was_helpful" not in last_query:
+                # Get previous position and distance
+                prev_pos = self.episode_trajectory[-2]["agent_pos"]
+                prev_distance = abs(prev_pos[0] - goal_pos[0]) + abs(prev_pos[1] - goal_pos[1])
+                # Tool was helpful if we moved closer to goal
+                last_query["tool_was_helpful"] = bool(current_distance < prev_distance)
 
         # Get recent moves (last 5)
         recent_moves = [t["agent_pos"] for t in self.episode_trajectory[-5:]]

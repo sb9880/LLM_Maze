@@ -26,7 +26,7 @@ class ExperimentConfigRequest(BaseModel):
 
     # Execution config
     seed: int = Field(42, ge=0)
-    max_steps_per_episode: int = Field(500, ge=100)
+    max_steps_per_episode: int = Field(500, ge=10)
 
     class Config:
         """Pydantic config."""

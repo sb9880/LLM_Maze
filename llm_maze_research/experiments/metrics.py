@@ -66,7 +66,7 @@ class MetricsCollector:
         helpful_queries = sum(
             1
             for query in tool_queries
-            if query.get("was_helpful", False)
+            if query.get("tool_was_helpful", False)
         )
         tool_accuracy_rate = (
             helpful_queries / tool_usage_count

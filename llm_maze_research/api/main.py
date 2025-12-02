@@ -5,6 +5,10 @@ from datetime import datetime
 from typing import Dict, Optional, Any
 import uuid
 import numpy as np
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware

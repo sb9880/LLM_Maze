@@ -301,7 +301,7 @@ Current Situation:
 - Tool reliability (success rate): {success_rate:.0%}
 
 Use the tool if:
-1. You're far from goal (distance > {maze_size//2}) AND tool is reliable (success > 50%)
+1. You're far from goal (distance > {maze_size//2})
 2. You're confused or stuck
 3. You've made many recent moves without progress
 
