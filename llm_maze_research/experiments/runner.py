@@ -103,6 +103,11 @@ class ExperimentRunner:
         """Run a single episode."""
         episode_id = f"{self.experiment_id}_ep{episode_num}"
 
+        # Print progress to console
+        print(f"\n{'='*80}")
+        print(f"Starting Episode {episode_num}/{self.config.num_episodes}")
+        print(f"{'='*80}")
+
         logger.info(
             "episode_start",
             episode_id=episode_id,
@@ -161,6 +166,11 @@ class ExperimentRunner:
         done = False
         success = False
 
+        # Reset agent for new episode (with goal position and maze size for LLM context)
+        goal_pos = tuple(obs["goal_pos"])
+        maze_size = obs["maze"].shape[0]
+        agent.reset(goal_pos=goal_pos, maze_size=maze_size)
+
         while not done:
             action = agent.step(obs, allow_tool=self.config.use_tool)
             obs, reward, terminated, truncated, info = env.step(action)
@@ -184,11 +194,16 @@ class ExperimentRunner:
             maze=env.maze.tolist(),
         )
 
+        # Print episode completion
+        steps = len(agent.episode_trajectory)
+        tool_queries = len(agent.tool_queries)
+        print(f"Episode {episode_num} Complete: {'✓ SUCCESS' if success else '✗ FAILED'} | Steps: {steps} | Tool Queries: {tool_queries}")
+
         logger.info(
             "episode_complete",
             episode_id=episode_id,
             success=success,
-            steps=len(agent.episode_trajectory),
+            steps=steps,
         )
 
     def _create_strategy(self, strategy_name: str, seed: int) -> Any:

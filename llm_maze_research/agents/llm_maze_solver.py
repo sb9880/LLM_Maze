@@ -11,18 +11,24 @@ logger = structlog.get_logger(__name__)
 class LLMMazeSolver:
     """LLM-based maze solver that makes navigation decisions."""
 
-    def __init__(self, model: str = "mistral", use_openai: bool = False):
+    def __init__(self, model: str = "mistral", use_openai: bool = False, max_history_messages: int = 20):
         """
         Initialize LLM maze solver.
 
         Args:
             model: Model name (e.g., 'mistral', 'gpt-3.5-turbo', 'gpt-4')
             use_openai: If True, use OpenAI API instead of Ollama
+            max_history_messages: Maximum number of conversation messages to keep (default 20)
         """
         self.model = model
         self.client = None
         self.use_openai = use_openai
         self.use_ollama = not use_openai
+        self.max_history_messages = max_history_messages
+
+        # Conversation history for persistent memory across steps
+        self.conversation_history = []
+        self.episode_initialized = False
 
         if use_openai:
             try:
@@ -63,6 +69,182 @@ class LLMMazeSolver:
                 )
                 self.use_ollama = False
 
+    def reset_episode(self, goal_pos: Optional[Tuple[int, int]] = None, maze_size: Optional[int] = None):
+        """
+        Reset conversation history for new episode.
+
+        Args:
+            goal_pos: Goal position for this episode
+            maze_size: Size of the maze
+        """
+        self.conversation_history = []
+        self.episode_initialized = False
+
+        # Add system prompt at start of episode
+        if goal_pos and maze_size:
+            system_prompt = f"""You are an intelligent maze navigation agent. Your task is to reach the goal position {goal_pos} in a {maze_size}x{maze_size} maze.
+
+Key Rules:
+1. Remember your previous positions to avoid loops
+2. Consider whether to use the pathfinding tool - it may be unreliable
+3. Make strategic decisions based on your progress
+4. Each step, decide: (a) Use tool? (b) Which direction to move?
+
+I will give you updates at each step. Make smart decisions to reach the goal efficiently."""
+
+            self.conversation_history.append({
+                "role": "system",
+                "content": system_prompt
+            })
+            self.episode_initialized = True
+
+        logger.info("Episode reset for LLM solver", model=self.model)
+
+    def _trim_conversation_history(self):
+        """Keep only recent conversation history to avoid token limits."""
+        if len(self.conversation_history) > self.max_history_messages:
+            # Always keep the system message (first message)
+            system_message = self.conversation_history[0] if self.conversation_history else None
+
+            # Keep only the most recent messages
+            recent_messages = self.conversation_history[-(self.max_history_messages - 1):]
+
+            # Rebuild history with system message + recent messages
+            if system_message:
+                self.conversation_history = [system_message] + recent_messages
+            else:
+                self.conversation_history = recent_messages
+
+    def decide_step(
+        self,
+        agent_pos: Tuple[int, int],
+        goal_pos: Tuple[int, int],
+        maze: np.ndarray,
+        recent_moves: List[Tuple[int, int]],
+        tool_history: List[dict],
+        allow_tool: bool = True,
+        recent_success_rate: float = 0.5,
+    ) -> Tuple[bool, Optional[int], Dict[str, Any]]:
+        """
+        Single LLM call to decide both tool usage AND next action.
+
+        Args:
+            agent_pos: Current position
+            goal_pos: Goal position
+            maze: Maze grid
+            recent_moves: Recent positions
+            tool_history: Tool query history
+            allow_tool: Whether tool usage is allowed
+            recent_success_rate: Tool reliability (0.0-1.0)
+
+        Returns:
+            Tuple of (should_use_tool, action_index, reasoning_dict)
+        """
+        if (not self.use_ollama and not self.use_openai) or self.client is None:
+            # Fallback: greedy move without tool
+            action, _ = self._greedy_move(agent_pos, goal_pos, maze)
+            return False, action, {"method": "fallback"}
+
+        try:
+            # Get valid moves
+            valid_moves = self._get_valid_moves(agent_pos, maze)
+
+            # Build combined prompt
+            prompt = self._build_combined_prompt(
+                agent_pos, goal_pos, maze, valid_moves, recent_moves,
+                tool_history, allow_tool, recent_success_rate
+            )
+
+            # Add to conversation history
+            self.conversation_history.append({
+                "role": "user",
+                "content": prompt
+            })
+
+            # Trim history to prevent token limit issues
+            self._trim_conversation_history()
+
+            if self.use_openai:
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=self.conversation_history,
+                    temperature=0.3,
+                    max_tokens=150,
+                )
+                decision_text = response.choices[0].message.content.strip().lower()
+
+                self.conversation_history.append({
+                    "role": "assistant",
+                    "content": decision_text
+                })
+            else:
+                # Ollama
+                full_prompt = self._format_ollama_prompt(self.conversation_history)
+                response = self.client.generate(
+                    model=self.model,
+                    prompt=full_prompt,
+                    stream=False,
+                    options={"temperature": 0.3, "top_k": 2, "top_p": 0.5},
+                )
+                decision_text = response["response"].strip().lower()
+
+                self.conversation_history.append({
+                    "role": "assistant",
+                    "content": decision_text
+                })
+
+            # Parse response for both tool decision and action
+            # More flexible parsing - check for various ways LLM might say "yes" to tool
+            should_use_tool = (
+                "tool: yes" in decision_text or
+                "use tool: yes" in decision_text or
+                "tool:yes" in decision_text or
+                "use the tool" in decision_text or
+                "using tool" in decision_text or
+                "will use tool" in decision_text or
+                "query tool" in decision_text or
+                "ask tool" in decision_text
+            ) and not (
+                "tool: no" in decision_text or
+                "use tool: no" in decision_text or
+                "not use tool" in decision_text or
+                "won't use tool" in decision_text or
+                "without tool" in decision_text
+            )
+
+            action = self._parse_action_decision(decision_text, valid_moves)
+
+            # Debug logging to see what LLM is saying
+            logger.info(
+                "llm_step_decision",
+                response=decision_text[:200],  # First 200 chars
+                tool_decision=should_use_tool,
+                action=action,
+            )
+
+            # Print first few responses of episode to console for debugging
+            if len(self.conversation_history) <= 10:  # First 5 steps (2 messages per step)
+                print(f"[DEBUG Step {len(self.conversation_history)//2}] LLM: {decision_text[:200]}")
+                print(f"        → Tool decision: {should_use_tool}, Action: {action}")
+
+            return should_use_tool, action, {
+                "method": "llm_combined",
+                "llm_response": decision_text,
+                "model": self.model,
+                "tool_decision": should_use_tool,
+            }
+
+        except Exception as e:
+            logger.warning(
+                "LLM combined decision failed, using fallback",
+                error=str(e),
+            )
+            action, _ = self._greedy_move(agent_pos, goal_pos, maze)
+            return False, action, {
+                "method": "fallback",
+                "error": str(e),
+            }
+
     def decide_action(
         self,
         agent_pos: Tuple[int, int],
@@ -98,24 +280,47 @@ class LLMMazeSolver:
                 agent_pos, goal_pos, maze, valid_moves, recent_moves, tool_history
             )
 
+            # Add user message to conversation history
+            self.conversation_history.append({
+                "role": "user",
+                "content": prompt
+            })
+
+            # Trim history to prevent token limit issues
+            self._trim_conversation_history()
+
             if self.use_openai:
-                # Use OpenAI API
+                # Use OpenAI API with full conversation history
                 response = self.client.chat.completions.create(
                     model=self.model,
-                    messages=[{"role": "user", "content": prompt}],
+                    messages=self.conversation_history,
                     temperature=0.3,
                     max_tokens=100,
                 )
                 decision_text = response.choices[0].message.content.strip().lower()
+
+                # Add assistant response to history
+                self.conversation_history.append({
+                    "role": "assistant",
+                    "content": decision_text
+                })
             else:
-                # Use Ollama
+                # Use Ollama - need to format conversation as single prompt
+                # Ollama doesn't support conversation history directly, so we'll include recent context
+                full_prompt = self._format_ollama_prompt(self.conversation_history)
                 response = self.client.generate(
                     model=self.model,
-                    prompt=prompt,
+                    prompt=full_prompt,
                     stream=False,
                     options={"temperature": 0.3, "top_k": 2, "top_p": 0.5},
                 )
                 decision_text = response["response"].strip().lower()
+
+                # Add assistant response to history
+                self.conversation_history.append({
+                    "role": "assistant",
+                    "content": decision_text
+                })
 
             # Parse response to get action
             action = self._parse_action_decision(decision_text, valid_moves)
@@ -173,24 +378,46 @@ class LLMMazeSolver:
                 agent_pos, goal_pos, maze_size, distance, recent_success_rate
             )
 
+            # Add to conversation history
+            self.conversation_history.append({
+                "role": "user",
+                "content": prompt
+            })
+
+            # Trim history to prevent token limit issues
+            self._trim_conversation_history()
+
             if self.use_openai:
-                # Use OpenAI API
+                # Use OpenAI API with conversation history
                 response = self.client.chat.completions.create(
                     model=self.model,
-                    messages=[{"role": "user", "content": prompt}],
+                    messages=self.conversation_history,
                     temperature=0.3,
                     max_tokens=50,
                 )
                 decision_text = response.choices[0].message.content.strip().lower()
+
+                # Add response to history
+                self.conversation_history.append({
+                    "role": "assistant",
+                    "content": decision_text
+                })
             else:
-                # Use Ollama
+                # Use Ollama with formatted prompt
+                full_prompt = self._format_ollama_prompt(self.conversation_history)
                 response = self.client.generate(
                     model=self.model,
-                    prompt=prompt,
+                    prompt=full_prompt,
                     stream=False,
                     options={"temperature": 0.3, "top_k": 2, "top_p": 0.5},
                 )
                 decision_text = response["response"].strip().lower()
+
+                # Add response to history
+                self.conversation_history.append({
+                    "role": "assistant",
+                    "content": decision_text
+                })
 
             # Parse response
             should_use = "yes" in decision_text
@@ -236,6 +463,64 @@ class LLMMazeSolver:
                 })
 
         return valid
+
+    def _build_combined_prompt(
+        self,
+        agent_pos: Tuple[int, int],
+        goal_pos: Tuple[int, int],
+        maze: np.ndarray,
+        valid_moves: List[Dict[str, Any]],
+        recent_moves: List[Tuple[int, int]],
+        tool_history: List[dict],
+        allow_tool: bool,
+        recent_success_rate: float,
+    ) -> str:
+        """Build prompt for COMBINED tool + action decision."""
+        distance = int(abs(agent_pos[0] - goal_pos[0]) + abs(agent_pos[1] - goal_pos[1]))
+        recent_tools = len([t for t in tool_history[-5:] if t])
+
+        # Format valid moves
+        moves_str = "\n".join(
+            [f"  - {m['direction']}: goes to {m['position']}" for m in valid_moves]
+        )
+
+        # Format recent positions
+        recent_str = ", ".join([str(p) for p in recent_moves[-3:]]) if recent_moves else "none"
+
+        tool_info = ""
+        if allow_tool:
+            tool_info = f"""
+Tool Information:
+- A pathfinding tool is available (may have errors)
+- Tool reliability: {recent_success_rate:.0%}
+- Recent tool usage (last 5 steps): {recent_tools} times
+"""
+
+        prompt = f"""Current step decision:
+
+Position: {agent_pos}
+Goal: {goal_pos}
+Distance to goal: {distance} steps
+Recent positions: {recent_str}
+{tool_info}
+Valid moves:
+{moves_str}
+
+Make TWO decisions:
+1. Should you use the pathfinding tool? (if allowed and seems helpful)
+2. Which direction should you move?
+
+Consider:
+- Avoid loops (don't revisit recent positions)
+- Tool may be unreliable - use when needed but don't blindly trust
+- Move toward goal when possible
+
+Response format:
+Tool: yes/no
+Direction: up/down/left/right
+Reasoning: brief explanation"""
+
+        return prompt
 
     def _build_decision_prompt(
         self,
@@ -353,3 +638,34 @@ Decision: """
             "method": "greedy",
             "reasoning": f"Moving {best_move['direction']} towards goal",
         }
+
+    def _format_ollama_prompt(self, conversation_history: List[Dict[str, str]]) -> str:
+        """
+        Format conversation history for Ollama (which doesn't support chat format natively).
+
+        Args:
+            conversation_history: List of conversation messages
+
+        Returns:
+            Formatted prompt string
+        """
+        if not conversation_history:
+            return ""
+
+        # Keep last 10 messages to avoid context overflow
+        recent_history = conversation_history[-10:]
+
+        formatted = []
+        for msg in recent_history:
+            role = msg["role"]
+            content = msg["content"]
+
+            if role == "system":
+                formatted.append(f"SYSTEM: {content}\n")
+            elif role == "user":
+                formatted.append(f"USER: {content}\n")
+            elif role == "assistant":
+                formatted.append(f"ASSISTANT: {content}\n")
+
+        formatted.append("ASSISTANT: ")
+        return "\n".join(formatted)

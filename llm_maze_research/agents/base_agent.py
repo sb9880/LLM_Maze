@@ -65,7 +65,7 @@ class BaseAgent:
         self.tool_queries = []
         self.decisions = []
 
-    def reset(self) -> None:
+    def reset(self, goal_pos: Optional[Tuple[int, int]] = None, maze_size: Optional[int] = None) -> None:
         """Reset agent state for new episode."""
         self.episode_trajectory = []
         self.tool_queries = []
@@ -337,6 +337,12 @@ class LLMSolverAgent(BaseAgent):
         model = config.model if config.use_openai else config.llm_model
         self.maze_solver = LLMMazeSolver(model=model, use_openai=config.use_openai)
 
+    def reset(self, goal_pos: Optional[Tuple[int, int]] = None, maze_size: Optional[int] = None) -> None:
+        """Reset agent state for new episode, including conversation history."""
+        super().reset()
+        # Reset LLM conversation memory for new episode
+        self.maze_solver.reset_episode(goal_pos=goal_pos, maze_size=maze_size)
+
     def step(
         self,
         obs: dict,
@@ -380,52 +386,41 @@ class LLMSolverAgent(BaseAgent):
         # Get recent moves (last 5)
         recent_moves = [t["agent_pos"] for t in self.episode_trajectory[-5:]]
 
-        # Step 1: LLM decides whether to use tool
-        planner_suggestion = None
-        tool_reasoning = None
-        if allow_tool and self.planner:
-            maze_size = maze.shape[0]
-            recent_success_rate = self._get_recent_tool_success_rate()
-            should_query_tool, tool_reasoning = self.maze_solver.decide_tool_usage(
-                agent_pos=tuple(agent_pos),
-                goal_pos=tuple(goal_pos),
-                maze_size=maze_size,
-                recent_success_rate=recent_success_rate,
-                tool_history=self.tool_queries,
-            )
-
-            # Query tool if LLM decided to
-            if should_query_tool:
-                planner_suggestion = self.planner.plan(
-                    maze,
-                    tuple(agent_pos),
-                    tuple(goal_pos),
-                )
-                self.tool_queries.append({
-                    "step": len(self.episode_trajectory) - 1,
-                    "position": tuple(agent_pos),
-                    "suggestion": planner_suggestion,
-                    "llm_decision": tool_reasoning,
-                })
-
-        # Step 2: LLM decides next action
-        action, action_reasoning = self.maze_solver.decide_action(
+        # Single LLM call to decide BOTH tool usage AND action
+        recent_success_rate = self._get_recent_tool_success_rate()
+        should_query_tool, action, reasoning = self.maze_solver.decide_step(
             agent_pos=tuple(agent_pos),
             goal_pos=tuple(goal_pos),
             maze=maze,
             recent_moves=recent_moves,
             tool_history=self.tool_queries,
+            allow_tool=allow_tool and self.planner is not None,
+            recent_success_rate=recent_success_rate,
         )
 
-        # Record decision with combined reasoning
+        # Query tool if LLM decided to use it
+        planner_suggestion = None
+        if should_query_tool and self.planner:
+            planner_suggestion = self.planner.plan(
+                maze,
+                tuple(agent_pos),
+                tuple(goal_pos),
+            )
+            self.tool_queries.append({
+                "step": len(self.episode_trajectory) - 1,
+                "position": tuple(agent_pos),
+                "suggestion": planner_suggestion,
+                "llm_decision": reasoning,
+            })
+
+        # Record decision
         decision_info = {
             "step": len(self.decisions),
             "action": action,
             "position": tuple(agent_pos),
             "goal": tuple(goal_pos),
-            "strategy": "llm_solver",
-            "action_reasoning": action_reasoning,
-            "tool_reasoning": tool_reasoning,
+            "strategy": "llm_solver_combined",
+            "reasoning": reasoning,
             "used_tool": planner_suggestion is not None,
         }
         self.decisions.append(decision_info)
