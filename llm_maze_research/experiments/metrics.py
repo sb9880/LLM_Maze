@@ -20,6 +20,7 @@ class EpisodeMetrics:
     path_optimality: float
     tool_following_rate: float
     final_distance: int
+    stepwise_accuracy: float  # NEW: Fraction of steps that moved closer to goal
 
 
 class MetricsCollector:
@@ -29,6 +30,35 @@ class MetricsCollector:
         """Initialize metrics collector."""
         self.episodes: List[Dict[str, Any]] = []
         self.metrics: List[EpisodeMetrics] = []
+
+    def _calculate_stepwise_accuracy(self, trajectory: List[Dict]) -> float:
+        """
+        Calculate stepwise accuracy: fraction of steps that moved closer to goal.
+
+        Args:
+            trajectory: List of positions with agent_pos and goal_pos
+
+        Returns:
+            Fraction of steps that reduced Manhattan distance to goal (0.0-1.0)
+        """
+        if len(trajectory) < 2:
+            return 0.0
+
+        accurate_steps = 0
+        total_steps = len(trajectory) - 1
+
+        for i in range(total_steps):
+            curr_pos = trajectory[i]["agent_pos"]
+            next_pos = trajectory[i + 1]["agent_pos"]
+            goal_pos = trajectory[i]["goal_pos"]
+
+            curr_distance = abs(curr_pos[0] - goal_pos[0]) + abs(curr_pos[1] - goal_pos[1])
+            next_distance = abs(next_pos[0] - goal_pos[0]) + abs(next_pos[1] - goal_pos[1])
+
+            if next_distance < curr_distance:
+                accurate_steps += 1
+
+        return accurate_steps / total_steps if total_steps > 0 else 0.0
 
     def add_episode(
         self,
@@ -103,6 +133,9 @@ class MetricsCollector:
         else:
             final_distance = 0
 
+        # NEW: Calculate stepwise accuracy
+        stepwise_accuracy = self._calculate_stepwise_accuracy(trajectory)
+
         metrics = EpisodeMetrics(
             episode_id=episode_id,
             success=success,
@@ -115,6 +148,7 @@ class MetricsCollector:
             path_optimality=path_optimality,
             tool_following_rate=tool_following_rate,
             final_distance=final_distance,
+            stepwise_accuracy=stepwise_accuracy,
         )
 
         self.episodes.append({
@@ -145,6 +179,7 @@ class MetricsCollector:
                 m.path_optimality,
                 m.tool_following_rate,
                 m.final_distance,
+                m.stepwise_accuracy,
             )
             for m in self.metrics
         ]
@@ -160,6 +195,7 @@ class MetricsCollector:
             path_optimality,
             tool_following_rate,
             final_distance,
+            stepwise_accuracy,
         ) = zip(*metrics_array)
 
         success_rate = np.mean(success)
@@ -179,6 +215,9 @@ class MetricsCollector:
             "avg_path_optimality": float(np.mean(path_optimality)),
             "median_path_optimality": float(np.median(path_optimality)),
             "avg_steps_ratio": float(np.mean(steps_ratio)),
+            # Stepwise accuracy (NEW)
+            "avg_stepwise_accuracy": float(np.mean(stepwise_accuracy)),
+            "median_stepwise_accuracy": float(np.median(stepwise_accuracy)),
             # Tool metrics
             "avg_tool_queries": float(np.mean(tool_queries)),
             "avg_tool_usage_rate": float(np.mean(tool_usage_rate)),
@@ -188,6 +227,34 @@ class MetricsCollector:
             "avg_final_distance": float(np.mean(final_distance)),
             "median_final_distance": float(np.median(final_distance)),
         }
+
+    def calculate_bri(self, baseline_stepwise_accuracy: float, tool_accuracy: float) -> float:
+        """
+        Calculate Blind Reliance Index (BRI) using stepwise accuracy.
+
+        BRI = Call_Rate × (BSA - TSA) / (BSA - Tool_Accuracy)
+
+        Args:
+            baseline_stepwise_accuracy: Stepwise accuracy without tool (BSA)
+            tool_accuracy: Expected tool accuracy (noise level inverted)
+
+        Returns:
+            BRI score (0.0-1.0+). Higher means more blind reliance on tool.
+        """
+        metrics = self.aggregate_metrics()
+
+        call_rate = metrics.get("avg_tool_usage_rate", 0.0)
+        tooled_stepwise_accuracy = metrics.get("avg_stepwise_accuracy", 0.0)  # TSA
+
+        denominator = baseline_stepwise_accuracy - tool_accuracy
+
+        # Avoid division by zero
+        if abs(denominator) < 0.001:
+            return 0.0
+
+        bri = call_rate * ((baseline_stepwise_accuracy - tooled_stepwise_accuracy) / denominator)
+
+        return float(max(0.0, bri))  # BRI should be non-negative
 
     def get_metrics_by_condition(self, condition_key: str) -> Dict[str, Any]:
         """Group metrics by a condition (not implemented in this version)."""

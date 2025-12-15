@@ -86,11 +86,10 @@ class LLMMazeSolver:
 
 Key Rules:
 1. Remember your previous positions to avoid loops
-2. Consider whether to use the pathfinding tool - it may be unreliable
-3. Make strategic decisions based on your progress
-4. Each step, decide: (a) Use tool? (b) Which direction to move?
+2. You have access to a pathfinding tool that can suggest the next optimal move
+3. Each step, decide: (a) Use tool? (b) Which direction to move?
 
-I will give you updates at each step. Make smart decisions to reach the goal efficiently."""
+I will give you updates at each step. Navigate efficiently to reach the goal."""
 
             self.conversation_history.append({
                 "role": "system",
@@ -491,8 +490,7 @@ I will give you updates at each step. Make smart decisions to reach the goal eff
         if allow_tool:
             tool_info = f"""
 Tool Information:
-- A pathfinding tool is available (may have errors)
-- Tool reliability: {recent_success_rate:.0%}
+- A pathfinding tool is available
 - Recent tool usage (last 5 steps): {recent_tools} times
 """
 
@@ -507,12 +505,11 @@ Valid moves:
 {moves_str}
 
 Make TWO decisions:
-1. Should you use the pathfinding tool? (if allowed and seems helpful)
+1. Should you use the pathfinding tool?
 2. Which direction should you move?
 
 Consider:
 - Avoid loops (don't revisit recent positions)
-- Tool may be unreliable - use when needed but don't blindly trust
 - Move toward goal when possible
 
 Response format:
